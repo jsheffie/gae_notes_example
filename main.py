@@ -4,7 +4,7 @@ import jinja2
 from google.appengine.api import users
 from google.appengine.ext import ndb
 import webapp2
-from models import Note
+from models import Note, CheckListItem
 
 # initialize the temaplte engine... Before the MainHanlder class def
 jinja_env = jinja2.Environment(loader=jinja2.FileSystemLoader(os.path.dirname(__file__)))
@@ -21,6 +21,21 @@ class MainHandler(webapp2.RequestHandler):
 
         template = jinja_env.get_template(template_name)
         return template.render(context)
+
+    @ndb.transactional
+    def _create_note(self, user):
+        note = Note(parent=ndb.Key("User", user.nickname()),
+                    title=self.request.get('title'),
+                    content=self.request.get('content'))
+        note.put()
+
+        item_titles = self.request.get('checklist_items').split(',')
+        for item_title in item_titles:
+            item = CheckListItem(parent=note.key, title=item_title)
+            item.put()
+            note.checklist_items.append(item.key)
+
+        note.put()
 
     def get(self):
         user = users.get_current_user()
@@ -43,10 +58,7 @@ class MainHandler(webapp2.RequestHandler):
         if user is None:
             self.errror(401)
 
-        note = Note(parent=ndb.Key("User", user.nickname()),
-                    title=self.request.get('title'), 
-                    content=self.request.get('content'))
-        note.put()
+        self._create_note(user)
 
         logout_url = users.create_logout_url(self.request.uri)
         template_context = {
